@@ -78,12 +78,10 @@ def bandpass(signal, rate, width, attenuation, f1, f2):
 def plot_signal(signal, rate, title):
     fig = plt.figure()
     axes_time, axes_freq = fig.subplots(2, 1)
-    axes_time.plot(signal, '-', linewidth=2)
-    axes_time.set_title("{}: Time".format(title))
-    axes_time.grid(True)
 
     n = len(signal)
     k = np.arange(n)
+    t = k/rate
     T = n/rate
     frq = k/T # two sides frequency range
     frq = frq[range(n//2)] # one side frequency range
@@ -91,10 +89,17 @@ def plot_signal(signal, rate, title):
     Y = scipy.fft(signal)/n # fft computing and normalization
     Y = Y[range(n//2)]
 
-    axes_freq.plot(frq,abs(Y),'r') # plotting the spectrum
+    axes_time.plot(t, signal, '-', linewidth=2)
+    axes_time.set_title("{}: Time".format(title))
+    axes_time.set_xlabel('Time (seconds)')
+    axes_time.set_ylabel('y')
+    axes_time.grid(True)
+
+    axes_freq.plot(frq, abs(Y), 'r') # plotting the spectrum
     axes_freq.set_xlabel('Freq (Hz)')
     axes_freq.set_ylabel('|Y(freq)|')
     axes_freq.set_title("{}: Frequency".format(title))
+    axes_freq.grid(True)
 
 
 def decimate(signal, input_rate, output_rate):
@@ -145,10 +150,17 @@ if __name__ == "__main__":
     carrier = np.exp(-1.0j*2.0*np.pi* 10000/rate*np.arange(len(fm_signal)))
     fm_signal = fm_signal * carrier
 
+    fm_signal = lowpass(
+        fm_signal,
+        rate=rate,
+        width=500,
+        attenuation=60,
+        f=1500
+    )
+
     fm_signal = decimate(fm_signal, rate, decimated_rate)
     plot_signal(fm_signal.real, decimated_rate, "Decimated Centered FM real")
-    plot_signal(fm_signal.imag, decimated_rate, "Decimated Centered FM imag")
-    plot_signal(fm_signal, decimated_rate, "Decimated Centered FM")
+    plot_signal(np.unwrap(np.angle(fm_signal)), decimated_rate, "Fase")
 
     fm = fm_signal.real / fm_signal.real.max()
     scipy.io.wavfile.write("./fm.wav", decimated_rate, fm)
