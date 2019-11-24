@@ -6,13 +6,15 @@ use a RTL-SDR with a dipole.
 
 Uses Python3, numpy, scipy and matplotlib.
 
+*En la carpeta `/docs` hay un informe y una presentación en español*
+
 ## Note
 
-There is a problem with this program, on my recordings the result is always 110°
+There is a problem with this program, on my recordings the result is always 114°
 off, so I just add that constant after doing the calculations.
 
 Probably you will need to measure your bearing from a known location first and
-change `ANGLE_OFFSET = 110` to another value if necessary.
+change `ANGLE_OFFSET = 114` to another value if necessary.
 
 ## Usage
 

@@ -20,7 +20,7 @@ PLOT_RESULT = True
 # think that I'm doing the calculations for the delays of each filter wrong, or
 # something like that. I don't have time to fix it now so I just add this number
 # to the angle
-ANGLE_OFFSET = 110
+ANGLE_OFFSET = 114
 
 class Signal:
 
