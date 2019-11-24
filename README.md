@@ -6,6 +6,14 @@ use a RTL-SDR with a dipole.
 
 Uses Python3, numpy, scipy and matplotlib.
 
+## Note
+
+There is a problem with this program, on my recordings the result is always 110°
+off, so I just add that constant after doing the calculations.
+
+Probably you will need to measure your bearing from a known location first and
+change `ANGLE_OFFSET = 110` to another value if necessary.
+
 ## Usage
 
 First determine the frequency of the VOR antenna and tune your SDR. You should

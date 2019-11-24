@@ -16,6 +16,12 @@ PLOT_STEPS = False
 # Whether to show the plots of phase of reference and variable signals
 PLOT_RESULT = True
 
+# Constant used for tuning, I don't know why I'm always some degrees off, I
+# think that I'm doing the calculations for the delays of each filter wrong, or
+# something like that. I don't have time to fix it now so I just add this number
+# to the angle
+ANGLE_OFFSET = 110
+
 class Signal:
 
     def __init__(self, samples, rate, delay=0):
@@ -201,6 +207,10 @@ def compare_phases(ref_signal, var_signal):
     var_signal.samples = var_signal.samples[var_signal.delay:]
     var_signal.delay = 0
 
+    # Correct the delay on the var_signal, I don't know why
+    delay = int(ANGLE_OFFSET / 360 * 1/30 * rate)
+    var_signal.samples = var_signal.samples[delay:]
+
     # Cut the variable signal if necessary, because if the are the same length
     # we can't do valid correlations. At least leave a difference of 4 periods
     var_max_length = int(len(ref_signal.samples) - rate * 4 / 30)
@@ -213,7 +223,7 @@ def compare_phases(ref_signal, var_signal):
     corr = np.correlate(ref_signal.samples, var_signal.samples, "valid")
     # Offset between signals in seconds
     offset = corr.argmax() / rate
-    bearing = 360 - (offset / (1/30) * 360)
+    bearing = (offset / (1/30) * 360)
     bearing = bearing % 360
 
     if PLOT_RESULT:
