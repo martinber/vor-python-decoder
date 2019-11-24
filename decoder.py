@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 
+import sys
+import copy
 import numpy as np
 import scipy.io.wavfile
 import scipy.signal
 import matplotlib.pyplot as plt
 
-FILENAME = "./sample_short.wav"
-
-DEBUG_PLOTS = False
 DECIMATED_RATE = 6000
+
+FILENAME = sys.argv[1]
+
+# Whether to show the plots of every step or not
+PLOT_STEPS = False
+# Whether to show the plots of phase of reference and variable signals
+PLOT_RESULT = True
 
 class Signal:
 
@@ -24,36 +30,38 @@ class Signal:
         self.rate = rate
         self.delay = delay
 
-
 def lowpass(signal, width, attenuation, f):
     """
-    - signal
+    FIR lowpass filter.
+
+    Updates the delay attribute of the Signal object, indicating the delay that
+    this filter has created.
+
+    Arguments:
+    - signal: Signal object
     - width [Hz]: Transition band width
     - attenuation [dB]: Positive decibels
     - f [Hz]: Cutoff frequency
     """
 
-    nyq_rate = signal.rate / 2.0
+    nyq_rate = signal.rate / 2
 
+    # Convert to normalized units (where 1 is the maximum frequency, equal to pi
+    # radians per second, or equal to rate/2)
     width_norm = width/nyq_rate
     f_norm = f/nyq_rate
 
     N, beta = scipy.signal.kaiserord(attenuation, width_norm)
 
+    # I prefer filters with odd number of taps
     if N % 2 == 0:
         N += 1
 
-    taps = scipy.signal.firwin(N, f_norm, window=('kaiser', beta))
-
-    if DEBUG_PLOTS:
-        fig = plt.figure()
-        axes_lst = fig.subplots(1, 1)
-        axes_lst.plot(taps, 'o', linewidth=2)
-        axes_lst.set_title("Lowpass filter taps")
-        axes_lst.grid(True)
-
+    # Design filter
+    taps = scipy.signal.firwin(N, f_norm, window=("kaiser", beta))
     print("Lowpass filtering with {} taps".format(N))
 
+    # Filter and create new Signal object
     result = Signal(
         scipy.signal.lfilter(taps, 1.0, signal.samples),
         signal.rate,
@@ -65,6 +73,7 @@ def bandpass(signal, width, attenuation, f1, f2):
     """
     Bandpass, leaves frequencies between f1 and f2
 
+    Arguments:
     - signal
     - width [Hz]: Transition band width
     - attenuation [dB]: Positive decibels
@@ -72,33 +81,30 @@ def bandpass(signal, width, attenuation, f1, f2):
     - f2 [Hz]: Cutoff frequency 2
     """
 
-    nyq_rate = signal.rate / 2.0
+    nyq_rate = signal.rate / 2
 
+    # Convert to normalized units (where 1 is the maximum frequency, equal to pi
+    # radians per second, or equal to rate/2)
     width_norm = width/nyq_rate
     f1_norm = f1/nyq_rate
     f2_norm = f2/nyq_rate
 
     N, beta = scipy.signal.kaiserord(attenuation, width_norm)
 
+    # I prefer filters with odd number of taps
     if N % 2 == 0:
         N += 1
 
+    # Design filter
     taps = scipy.signal.firwin(
         N,
         [f1_norm, f2_norm],
-        window=('kaiser', beta),
+        window=("kaiser", beta),
         pass_zero=False
     )
-
-    if DEBUG_PLOTS:
-        fig = plt.figure()
-        axes_lst = fig.subplots(1, 1)
-        axes_lst.plot(taps, 'o', linewidth=2)
-        axes_lst.set_title("Lowpass filter taps")
-        axes_lst.grid(True)
-
     print("Bandpass filtering with {} taps".format(N))
 
+    # Filter and create new Signal object
     result = Signal(
         scipy.signal.lfilter(taps, 1.0, signal.samples),
         signal.rate,
@@ -107,105 +113,159 @@ def bandpass(signal, width, attenuation, f1, f2):
     return result
 
 def plot_signal(signal, title):
-    fig = plt.figure()
+    """
+    Plots a signal as a function of time and frequency.
+
+    Arguments:
+    - signal: Signal object
+    - title: Description of the signal
+
+    Reference: https://glowingpython.blogspot.com/2011/08/how-to-plot-frequency-spectrum-with.html
+    """
+    if not PLOT_STEPS:
+        return
+
+    fig = plt.figure(title)
     axes_time, axes_freq = fig.subplots(2, 1)
 
     samples = signal.samples
 
     n = len(samples)
     k = np.arange(n)
-    t = k/signal.rate
-    T = n/signal.rate
-    frq = k/T # two sides frequency range
-    frq = frq[range(n//2)] # one side frequency range
+    T = n / signal.rate
 
-    Y = scipy.fft(samples)/n # fft computing and normalization
-    Y = Y[range(n//2)]
+    # Two sides frequency range
+    frq = k / T
+    # One side frequency range
+    frq = frq[range(n // 2)]
+    # Time range
+    t = k / signal.rate
 
-    axes_time.plot(t, samples, '-', linewidth=2)
+    # FFT computing and normalization
+    Y = scipy.fft(samples) / n
+    # Keep only one side
+    Y = Y[range(n // 2)]
+
+    # Delay in seconds
+    delay_s = signal.delay / signal.rate
+
+    axes_time.plot(t, samples, "b")
     axes_time.set_title("{}: Time".format(title))
-    axes_time.set_xlabel("Time (seconds), delay: {}s".format(signal.delay / signal.rate))
-    axes_time.set_ylabel('y')
+    axes_time.set_xlabel("Time (seconds), delay: {}s".format(delay_s))
+    axes_time.set_ylabel("y(t)")
     axes_time.grid(True)
 
-    axes_freq.plot(frq, abs(Y), 'r') # plotting the spectrum
-    axes_freq.set_xlabel('Freq (Hz)')
-    axes_freq.set_ylabel('|Y(freq)|')
+    axes_freq.plot(frq, abs(Y), "r") # plotting the spectrum
     axes_freq.set_title("{}: Frequency".format(title))
+    axes_freq.set_xlabel("Freq (Hz)")
+    axes_freq.set_ylabel("|Y(f)|")
     axes_freq.grid(True)
 
 def decimate(signal, output_rate):
     """
     Decimate to reach a given sample rate.
 
-    Raises exception when input and output rate are not are not divisible
+    Raises exception when input and output rate are not divisible.
     """
     assert signal.rate % output_rate == 0
-    decimation = signal.rate // output_rate
+    factor = signal.rate // output_rate
 
     result = Signal(
-        signal.samples[::decimation],
+        signal.samples[::factor],
         output_rate,
-        signal.delay // decimation
+        signal.delay // factor
     )
     return result
 
 def compare_phases(ref_signal, var_signal):
-    fig = plt.figure()
-    axes = fig.subplots(1, 1)
+    """
+    Compare the phase of te reference and variable signals.
 
+    Returns the difference, which should be the location of the receiver respect
+    to the VOR transmitter.
+    """
     assert ref_signal.rate == var_signal.rate
+    rate = ref_signal.rate
+
+    # Copy signals so I do not modify the objects given by the caller
+    ref_signal = copy.copy(ref_signal)
+    var_signal = copy.copy(var_signal)
 
     # Remove delays
-
-    print(ref_signal.delay)
-    print(var_signal.delay)
-    ref_signal.samples = ref_signal.samples[ref_signal.delay:] / abs(ref_signal.samples.max())
+    # Each succesive FIR filter adds a delay to the samples, so I store in the
+    # signal object the delay in samples of each operation. Now I just cut the
+    # start of the signal accordingly to leave both signals correctly aligned on
+    # time
+    ref_signal.samples = ref_signal.samples[ref_signal.delay:]
     ref_signal.delay = 0
-    var_signal.samples = var_signal.samples[var_signal.delay:] / abs(var_signal.samples.max())
+    var_signal.samples = var_signal.samples[var_signal.delay:]
     var_signal.delay = 0
 
-    # Plot
+    # Cut the variable signal if necessary, because if the are the same length
+    # we can't do valid correlations. At least leave a difference of 4 periods
+    var_max_length = int(len(ref_signal.samples) - rate * 4 / 30)
+    if len(var_signal.samples) > var_max_length:
+        var_signal.samples = var_signal.samples[:var_max_length]
 
-    n = len(samples)
-    k = np.arange(n)
-    t = k/ref_signal.rate
+    # Get the angle difference
+    # I'm doing the correlation between both signals and then I take a look at
+    # the maximum
+    corr = np.correlate(ref_signal.samples, var_signal.samples, "valid")
+    # Offset between signals in seconds
+    offset = corr.argmax() / rate
+    bearing = 360 - (offset / (1/30) * 360)
+    bearing = bearing % 360
 
-    axes.plot(t[:len(ref_signal.samples)], ref_signal.samples, 'b', label="Reference")
-    axes.plot(t[:len(var_signal.samples)], var_signal.samples, 'r', label="Variable")
-    axes.set_title("Reference vs variable signal")
-    axes.set_xlabel("Time (seconds)")
-    axes.set_ylabel('y')
-    axes.legend()
-    axes.grid(True)
+    if PLOT_RESULT:
+        fig = plt.figure("Phase comparison")
+        axes_signals, axes_corr = fig.subplots(2, 1)
 
+        # Normalize both signals a bit so the plot looks better
+        ref_signal.samples = ref_signal.samples / abs(ref_signal.samples.max())
+        var_signal.samples = var_signal.samples / abs(var_signal.samples.max())
 
-    result = 0
-    for (n,), x in np.ndenumerate(ref_signal.samples):
-        result += x * np.exp(-1.0j * 30/ref_signal.rate * n)
-    ref_phase = np.angle(result) / (2*np.pi) * 360
+        n = len(ref_signal.samples)
+        t = np.arange(n) / rate
 
-    result = 0
-    for (n,), x in np.ndenumerate(var_signal.samples):
-        result += x * np.exp(-1.0j * 30/var_signal.rate * n)
-    var_phase = np.angle(result) / (2*np.pi) * 360
+        axes_signals.plot(
+            t[:len(ref_signal.samples)],
+            ref_signal.samples,
+            "b", label="Reference"
+        )
+        axes_signals.plot(
+            t[:len(var_signal.samples)],
+            var_signal.samples,
+            "r",
+            label="Variable"
+        )
+        axes_signals.set_title("Phase comparison")
+        axes_signals.set_xlabel("Time (seconds)")
+        axes_signals.set_ylabel("y(t)")
+        axes_signals.legend()
+        axes_signals.grid(True)
 
-    angle = (var_phase - ref_phase) % 360
-    print(angle)
+        n = len(corr)
+        t = np.arange(n) / rate
 
-if __name__ == "__main__":
+        axes_corr.plot(t, corr, "b")
+        axes_corr.set_title("Correlation")
+        axes_corr.set_xlabel("Time (seconds)")
+        axes_corr.set_ylabel("correlation")
+        axes_corr.grid(True)
+
+    return bearing
+
+def main():
 
     # Load input from wav
-
     rate, samples = scipy.io.wavfile.read(FILENAME)
-    # Keep only one channel if audio is stereo
     if samples.ndim > 1:
+        # Keep only one channel if audio is stereo
         samples = samples[:, 0]
     input_signal = Signal(samples, rate)
     print("Input sample rate:", rate)
 
     plot_signal(input_signal, "Input")
-
 
     # Filter and decimate reference signal, a 30Hz tone
 
@@ -227,15 +287,13 @@ if __name__ == "__main__":
         f1=8500,
         f2=11500
     )
-
-    #  plot_signal(fm_signal, "FM filtered")
+    plot_signal(fm_signal, "FM filtered")
 
     # Center FM signal on 0Hz
 
     carrier = np.exp(-1.0j*2.0*np.pi*10000/fm_signal.rate*np.arange(len(fm_signal.samples)))
     fm_signal.samples = fm_signal.samples * carrier
-
-    #  plot_signal(fm_signal, "FM centered")
+    plot_signal(fm_signal, "FM centered")
 
     # Lowpass and decimate FM signal
 
@@ -247,8 +305,7 @@ if __name__ == "__main__":
     )
 
     fm_signal = decimate(fm_signal, DECIMATED_RATE)
-
-    #  plot_signal(fm_signal, "FM centered and filtered")
+    plot_signal(fm_signal, "FM centered and decimated")
 
     # Get phase of FM signal to get the variable signal
 
@@ -257,7 +314,7 @@ if __name__ == "__main__":
         fm_signal.rate,
         fm_signal.delay
     )
-    #  plot_signal(var_signal, "Variable signal")
+    plot_signal(var_signal, "Variable signal")
 
     # Remove DC of variable signal
 
@@ -271,6 +328,11 @@ if __name__ == "__main__":
 
     plot_signal(var_signal, "Variable signal")
 
-    compare_phases(ref_signal, var_signal)
+    bearing = compare_phases(ref_signal, var_signal)
+    print("Bearing: {}°".format(bearing))
 
     plt.show()
+
+if __name__ == "__main__":
+
+    main()
