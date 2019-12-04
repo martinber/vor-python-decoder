@@ -301,7 +301,7 @@ def main():
 
     # Center FM signal on 0Hz
 
-    carrier = np.exp(-1.0j*2.0*np.pi*10000/fm_signal.rate*np.arange(len(fm_signal.samples)))
+    carrier = np.exp(-1.0j*2.0*np.pi*9960/fm_signal.rate*np.arange(len(fm_signal.samples)))
     fm_signal.samples = fm_signal.samples * carrier
     plot_signal(fm_signal, "FM centered")
 
